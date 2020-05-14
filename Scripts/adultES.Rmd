@@ -1,0 +1,199 @@
+---
+title: "Untitled"
+author: "Eric Skuse"
+date: "4/11/2020"
+output: html_document
+---
+
+```{r}
+rm(list = ls())
+
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(readr)
+adult11 <- read_csv("adult11.csv", col_types = cols(X16 = col_skip(), X17 = col_skip()), na = "?")
+View(adult11)
+```
+
+## Data clean up
+
+Remove observations with missing data and assign variables as factors
+
+```{r}
+adult <- na.omit(adult11)
+adult$workclass <- factor(adult$workclass)
+adult$education <- factor(adult$education)
+adult$`marital-status` <- factor(adult$`marital-status`)
+adult$occupation <- factor(adult$occupation)
+adult$relationship <- factor(adult$relationship)
+adult$race <- factor(adult$race)
+adult$gender <- factor(adult$gender)
+adult$salary <- factor(adult$salary)
+```
+
+```{r}
+#Check column names
+colnames(adult)
+
+#change column names from dash to underscore
+colnames(adult)<- c("age","workclass","fnlwgt","education","education_num","marital_status","occupation","relationship","race","gender","capital_gain","capital_loss","hours_per_week","native_country","salary")
+
+summary(adult)
+```
+```{r}
+#Check how many people in the data set made capital gains more than 0
+adult%>%
+  filter(capital_loss>0)
+
+#How many made losses more than 0?
+adult%>%
+  filter(capital_gain>0)%>%
+  arrange(desc(`capital_gain`))
+
+#We have a reasonable number of observations to model with
+          
+```
+
+```{r}
+#Check for distribution in capital gain and loss data: it looks like lots of people made 99,999 in capital gains (it must be the cap). 
+#But no one made 40-100k in gains? Seems improbable. Maybe the entries for 99,999 in capital gains are mistakes.
+adult%>%
+  ggplot(aes(x=age,y=capital_gain,color=salary)) +
+  geom_point(shape=1)
+
+adult%>%
+  ggplot(aes(x=age,y=capital_loss,color=salary)) +
+  geom_point(shape=1)
+```
+```{r}
+#another look at the distribution of the capital gain and capital loss data points
+adult%>%
+  filter(capital_gain>0)%>%
+    ggplot(aes(x=capital_gain))+
+    geom_histogram(binwidth = 200)
+
+adult%>%
+  filter(capital_loss>0)%>%
+    ggplot(aes(x=capital_loss))+
+    geom_histogram(binwidth = 50)
+```
+```{r}
+#take out all the observations with 99999 capital gains, since they may skew the results
+adult[adult == 99999] <- NA
+adult <- na.omit(adult)
+
+#check to see if obbservations were removed
+adult%>%
+  filter(capital_gain>0)%>%
+    ggplot(aes(x=capital_gain))+
+    geom_histogram(binwidth = 200)
+```
+
+
+```{r}
+#people with more salary have higher capital gains
+adult%>%
+  filter(capital_gain>0)%>%
+  ggplot(aes(x=salary,y=capital_gain))+
+  geom_boxplot()
+
+adult%>%
+  filter(capital_loss>0)%>%
+  ggplot(aes(x=salary,y=capital_loss))+
+  geom_boxplot()
+```
+```{r}
+#Need to create some new columns to model our target variable, i.e. who would like to play in the stock market and be receptive to marketing efforts from our financial services firm? Let's start with a binary Yes / no variable for people who either gained or lost more than $1,000. We'll mark them as play=yes
+
+adult<-adult%>%
+  mutate(play=as.factor(ifelse(capital_loss >= 500 | capital_gain >= 500,"Yes","No")))
+
+adult%>%
+  filter(play=="Yes")
+```
+#Logistic regression model
+```{r}
+#Education, salary, marital status, and gender are predictors with significance
+logit_model<-glm(play~gender+salary+education+race+workclass+marital_status+occupation+relationship,
+                 family="binomial", 
+                 data=adult)                   
+summary(logit_model)
+```
+```{r}
+#Re-run the model with only gender, education and salary as predictors
+logit_model<-glm(play~gender+salary+education+marital_status,
+                 family="binomial", 
+                 data=adult)                   
+summary(logit_model)
+```
+
+### Use of the model to predict
+```{r}
+adult$log_odd<-predict(logit_model)                         # get predicted log odds (default)
+adult$logit_pred_prob<-predict(logit_model,type="response") # get predicted probabilities
+
+adult%>%
+  select("play","capital_gain","capital_loss","log_odd","logit_pred_prob")
+```
+
+#With the predicted probabilities, you can sort people by the predicted probability of having significant capital gains or losses. 
+```{r}
+adult%>%
+  arrange(desc(logit_pred_prob))%>%
+  select("play", "capital_gain", "capital_loss", "salary", "logit_pred_prob")
+```
+
+And use a different cut-off for class prediction using `ifelse()`. 
+```{r}
+adult$logit_pred_class<-ifelse(adult$logit_pred_prob>0.3,"Yes","No")
+
+adult%>%
+  arrange(desc(logit_pred_prob))%>%
+  select("play", "capital_gain", "capital_loss", "salary", "logit_pred_prob", "logit_pred_class")
+```
+
+```{r}
+set.seed(3)   # set a random seed 
+index <- sample(nrow(adult), nrow(adult)*0.2) # random selection of indices. 
+test <- adult[index,]       # save 20% as a test dataset
+training <- adult[-index,]   # save the rest as a training set
+```
+
+#run the model on training data only
+```{r}
+logit_model<-glm(play~gender+salary+education+marital_status,
+                 family="binomial", 
+                 data=training)                   
+summary(logit_model)
+```
+#apply model to test data
+```{r}
+logit_model_test<-glm(play~gender+salary+education+marital_status,
+                 family="binomial", 
+                 data=test)                   
+summary(logit_model_test)
+
+```
+```{r}
+test$lm_log_odd<-predict(logit_model_test,test)
+test$lm_pred_prob<-predict(logit_model_test,test,type="response")
+
+test$lm_bp_pred_class=ifelse(test$lm_pred_prob>0.3,"Yes","No")
+
+table(test$lm_bp_pred_class,test$play, dnn=c("predicted","actual")) 
+
+table(test$lm_bp_pred_class==test$play)
+7580/8998         #accuarcy of the model = 84%
+
+head(test)
+```
+
+
+#model validation
+```{r}
+library(pROC)
+lm_roc<-roc(test$play,test$lm_pred_prob,auc=TRUE)
+plot(lm_roc,print.auc=TRUE,col="blue")
+```
+
