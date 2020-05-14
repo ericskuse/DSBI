@@ -12,7 +12,8 @@ library(readr)
 library(tidyverse)
 library(ggplot2)
 library(readr)
-adult11 <- read_csv("adult11.csv", col_types = cols(X16 = col_skip(), X17 = col_skip()), na = "?")
+setwd("~/Documents/GitHub/DSBI")
+adult11 <- read_csv("Data/adult11.csv", col_types = cols(X16 = col_skip(), X17 = col_skip()), na = "?")
 View(adult11)
 ```
 
