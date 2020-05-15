@@ -138,7 +138,7 @@ logit_model<-glm(play~gender+salary+education+marital_status,
 summary(logit_model)
 ```
 
-## Use of the model to predict
+### Use of the model to predict
 ```{r}
 adult$log_odd<-predict(logit_model)                         # get predicted log odds (default)
 adult$logit_pred_prob<-predict(logit_model,type="response") # get predicted probabilities
@@ -163,7 +163,7 @@ adult%>%
   select("play", "capital_gain", "capital_loss", "salary", "logit_pred_prob", "logit_pred_class")
 ```
 
-## Model validation
+### Model validation
 ```{r}
 set.seed(3)   # set a random seed 
 index <- sample(nrow(adult), nrow(adult)*0.2) # random selection of indices. 
@@ -207,5 +207,47 @@ head(test)
 library(pROC)
 lm_roc<-roc(test$play,test$lm_pred_prob,auc=TRUE)
 plot(lm_roc,print.auc=TRUE,col="blue")
+```
+
+## Decision Tree Model
+```{r}
+library(rpart)
+library(rpart.plot)
+
+ct_model<-rpart(play~gender+salary+education+marital_status,           # model formula
+                data=adult,                             # dataset
+                method="class",                           # "class" indicates a classification tree model 
+                control=rpart.control(cp=0,maxdepth=4))   # tree control parameters. 
+```
+
+```{r}
+rpart.plot(ct_model)   # tree plot
+```
+```{r}
+print(ct_model)
+```
+
+```{r}
+summary(ct_model)
+```
+```{r}
+ct_pred_class<-predict(ct_model,type="class") # class membership (yes or no) 
+head(ct_pred_class)
+
+ct_pred<-predict(ct_model)  # get the predicted values - class probabilities (default)
+head(ct_pred)
+```
+```{r}
+adult$ct_pred_prob<-ct_pred[,2]   
+
+adult$ct_pred_class<-ifelse(adult$ct_pred_prob>0.4,"Yes","No")   
+```
+
+```{r}
+adult%>%
+  filter(ct_pred_prob>0.3) 
+
+adult%>%
+  arrange(desc(ct_pred_prob))
 ```
 
