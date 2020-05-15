@@ -5,6 +5,14 @@ date: "4/11/2020"
 output: html_document
 ---
 
+# Adult Income Data Analysis
+
+**Data Understanding & Preparation** 
+ 
+The data used for our business problem was retrieved from Kaggle: [adult income](https://www.kaggle.com/serpilturanyksel/adult-income)
+ 
+This dataset includes 48842 observations (rows) and with 15 variables (columns). Each observation in the data set represents an individual adult. Within each observation, variables include:Age  Work class  Education  Marital status  Occupation  Relationship  Race  Gender  Capital gain  Capital loss  Hours per week  Native country  Salary  
+
 ```{r}
 rm(list = ls())
 
@@ -18,10 +26,8 @@ View(adult11)
 ```
 
 ## Data clean up
-
-Remove observations with missing data and assign variables as factors
-
 ```{r}
+#Remove observations with missing data and assign variables as factors
 adult <- na.omit(adult11)
 adult$workclass <- factor(adult$workclass)
 adult$education <- factor(adult$education)
@@ -43,7 +49,7 @@ colnames(adult)<- c("age","workclass","fnlwgt","education","education_num","mari
 summary(adult)
 ```
 ```{r}
-#Check how many people in the data set made capital gains more than 0
+#To make sure we have a reasonable number of observations to model with, check how many people in the data set made capital gains more than 0
 adult%>%
   filter(capital_loss>0)
 
@@ -51,14 +57,10 @@ adult%>%
 adult%>%
   filter(capital_gain>0)%>%
   arrange(desc(`capital_gain`))
-
-#We have a reasonable number of observations to model with
-          
 ```
 
 ```{r}
-#Check for distribution in capital gain and loss data: it looks like lots of people made 99,999 in capital gains (it must be the cap). 
-#But no one made 40-100k in gains? Seems improbable. Maybe the entries for 99,999 in capital gains are mistakes.
+#Check for distribution in capital gain and loss data: it looks like lots of people made 99,999 in capital gains (it must be the cap). But no one made 40-100k in gains? Seems improbable. Maybe the entries for 99,999 in capital gains are mistakes.
 adult%>%
   ggplot(aes(x=age,y=capital_gain,color=salary)) +
   geom_point(shape=1)
@@ -79,6 +81,8 @@ adult%>%
     ggplot(aes(x=capital_loss))+
     geom_histogram(binwidth = 50)
 ```
+
+**Remove outliers**
 ```{r}
 #take out all the observations with 99999 capital gains, since they may skew the results
 adult[adult == 99999] <- NA
@@ -104,6 +108,8 @@ adult%>%
   ggplot(aes(x=salary,y=capital_loss))+
   geom_boxplot()
 ```
+
+**Establish a target variable**
 ```{r}
 #Need to create some new columns to model our target variable, i.e. who would like to play in the stock market and be receptive to marketing efforts from our financial services firm? Let's start with a binary Yes / no variable for people who either gained or lost more than $1,000. We'll mark them as play=yes
 
@@ -113,7 +119,10 @@ adult<-adult%>%
 adult%>%
   filter(play=="Yes")
 ```
-#Logistic regression model
+
+# Modeling
+
+## Logistic regression model
 ```{r}
 #Education, salary, marital status, and gender are predictors with significance
 logit_model<-glm(play~gender+salary+education+race+workclass+marital_status+occupation+relationship,
@@ -129,7 +138,7 @@ logit_model<-glm(play~gender+salary+education+marital_status,
 summary(logit_model)
 ```
 
-### Use of the model to predict
+## Use of the model to predict
 ```{r}
 adult$log_odd<-predict(logit_model)                         # get predicted log odds (default)
 adult$logit_pred_prob<-predict(logit_model,type="response") # get predicted probabilities
@@ -138,15 +147,15 @@ adult%>%
   select("play","capital_gain","capital_loss","log_odd","logit_pred_prob")
 ```
 
-#With the predicted probabilities, you can sort people by the predicted probability of having significant capital gains or losses. 
 ```{r}
+#With the predicted probabilities, you can sort people by the predicted probability of having significant capital gains or losses
 adult%>%
   arrange(desc(logit_pred_prob))%>%
   select("play", "capital_gain", "capital_loss", "salary", "logit_pred_prob")
 ```
 
-And use a different cut-off for class prediction using `ifelse()`. 
 ```{r}
+#Use a different cut-off for class prediction using `ifelse()`.
 adult$logit_pred_class<-ifelse(adult$logit_pred_prob>0.3,"Yes","No")
 
 adult%>%
@@ -154,6 +163,7 @@ adult%>%
   select("play", "capital_gain", "capital_loss", "salary", "logit_pred_prob", "logit_pred_class")
 ```
 
+## Model validation
 ```{r}
 set.seed(3)   # set a random seed 
 index <- sample(nrow(adult), nrow(adult)*0.2) # random selection of indices. 
@@ -161,21 +171,23 @@ test <- adult[index,]       # save 20% as a test dataset
 training <- adult[-index,]   # save the rest as a training set
 ```
 
-#run the model on training data only
 ```{r}
+#run the model on training data only
 logit_model<-glm(play~gender+salary+education+marital_status,
                  family="binomial", 
                  data=training)                   
 summary(logit_model)
 ```
-#apply model to test data
+
 ```{r}
+#apply model to test data
 logit_model_test<-glm(play~gender+salary+education+marital_status,
                  family="binomial", 
                  data=test)                   
 summary(logit_model_test)
 
 ```
+
 ```{r}
 test$lm_log_odd<-predict(logit_model_test,test)
 test$lm_pred_prob<-predict(logit_model_test,test,type="response")
@@ -190,9 +202,8 @@ table(test$lm_bp_pred_class==test$play)
 head(test)
 ```
 
-
-#model validation
 ```{r}
+#ROC curve
 library(pROC)
 lm_roc<-roc(test$play,test$lm_pred_prob,auc=TRUE)
 plot(lm_roc,print.auc=TRUE,col="blue")
